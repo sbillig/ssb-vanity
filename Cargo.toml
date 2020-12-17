@@ -3,6 +3,13 @@ name = "ssb-vanity"
 version = "0.1.0"
 authors = ["sean billig <sean.billig@gmail.com>"]
 edition = "2018"
+license = "AGPL-3.0"
+description = "Generate vanity keys for Secure Scuttlebutt"
+repository = "https://github.com/sbillig/ssb-vanity"
+documentation = "https://docs.rs/ssb-vanity/"
+readme = "README.md"
+keywords = ["ssb", "scuttlebutt"]
+include = ["src/*", "LICENSE", "README.md"]
 
 [dependencies]
 ssb-crypto = "0.2.0"

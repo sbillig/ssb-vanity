@@ -1,5 +1,7 @@
 use ssb_crypto::{AsBytes, Keypair};
+use std::io::{self, Write};
 use std::sync::mpsc;
+use std::time::Instant;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -21,40 +23,77 @@ fn main() {
 
     let prefix = args.prefix;
     let (tx, rx) = mpsc::channel();
+
+    let start = Instant::now();
+    let mut last_print = start;
+
     for _ in 0..args.threads {
         let tx = tx.clone();
         let prefix = prefix.clone();
         std::thread::spawn(move || match_b64_prefix(&prefix, tx));
     }
 
-    loop {
-        let (is_exact, keypair) = rx.recv().unwrap();
-        println!("{} {}", keypair.id_string(), keypair.secret_string());
+    let mut count = 0u64;
 
-        if is_exact {
-            return;
+    loop {
+        use Update::*;
+        match rx.recv().unwrap() {
+            ExactMatch(kp) => {
+                println!("\r{} {}", kp.id_string(), kp.secret_string());
+                return;
+            }
+            CloseMatch(kp) => {
+                println!("\r{} {}", kp.id_string(), kp.secret_string());
+            }
+            Stats(n) => {
+                count += n;
+                if last_print.elapsed().as_secs() >= 1 {
+                    let secs = start.elapsed().as_secs();
+                    print!(
+                        "\relapsed: {}s; keys generated: {}; per second: {}",
+                        secs,
+                        count,
+                        count / secs
+                    );
+                    io::stdout().flush().unwrap();
+                    last_print = Instant::now();
+                }
+            }
         }
     }
 }
 
-fn match_b64_prefix(prefix: &str, sender: mpsc::Sender<(bool, Keypair)>) -> Keypair {
+enum Update {
+    ExactMatch(Keypair),
+    CloseMatch(Keypair),
+    Stats(u64),
+}
+
+fn match_b64_prefix(prefix: &str, sender: mpsc::Sender<Update>) -> Keypair {
     let chars = prefix.len();
     let bytes = (prefix.len() as f64 * 3.0 / 4.0).ceil() as usize;
 
     let prefix_lower = prefix.to_ascii_lowercase();
     let mut buf = [0; 44];
 
+    let mut count = 0u64;
+
     loop {
         let key = Keypair::generate();
         base64::encode_config_slice(&key.public.0[..bytes], base64::STANDARD, &mut buf);
 
         if &buf[..chars] == prefix.as_bytes() {
-            sender.send((true, key)).unwrap()
+            sender.send(Update::ExactMatch(key)).unwrap()
         } else {
             buf[..chars].make_ascii_lowercase();
             if &buf[..chars] == prefix_lower.as_bytes() {
-                sender.send((false, key)).unwrap()
+                sender.send(Update::CloseMatch(key)).unwrap()
             }
+        }
+        const N: u64 = 10_000;
+        count += 1;
+        if count % N == 0 {
+            sender.send(Update::Stats(N)).unwrap();
         }
     }
 }

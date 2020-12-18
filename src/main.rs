@@ -22,8 +22,15 @@ fn main() {
     }
 
     let prefix = args.prefix;
-    let (tx, rx) = mpsc::channel();
 
+    for c in prefix.as_bytes() {
+        if !(c.is_ascii_alphanumeric() || *c == b'/' || *c == b'+') {
+            eprintln!("Invalid prefix character: {}", *c as char);
+            std::process::exit(1);
+        }
+    }
+
+    let (tx, rx) = mpsc::channel();
     let start = Instant::now();
     let mut last_print = start;
 
